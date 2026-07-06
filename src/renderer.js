@@ -168,6 +168,7 @@ let fileAcceptOn = false
 let sendMediaState = null
 let sendFile = null // (blob, opts) => Promise — set by setupMediaHandlers
 
+let unstrippedMediaWarned = false // one-time notice when sending media we can't strip
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
 const THUMBNAIL_WIDTH = 100
 const receivingTransfers = {} // `${peerId}:${transferId}` → { el, progressEl, thumbEl } for in-progress incoming files
@@ -1284,9 +1285,82 @@ function fileExtension(type, originalName) {
   return fromName ? fromName[1].toLowerCase() : ''
 }
 
-// Sends a single file: strips EXIF + generates a thumbnail for images,
-// shows an immediate preview in our own chat (instant feedback before the
-// transfer even starts), then sends with per-file progress tracking.
+// ── media container metadata stripping ───────────────────────────
+// MP4/MOV/M4A (ISO Base Media Format) files carry GPS location and device
+// make/model in `udta`/`meta` boxes — the same class of data we strip from
+// image EXIF. We blank those boxes in place: retype each to `free` (padding a
+// player ignores) and zero its payload. Keeping the box size identical means
+// media sample-offset tables (stco/co64) stay valid, so no re-muxing and no
+// corruption. Other formats (MP3/ID3, WebM/MKV) aren't handled — the caller
+// warns for those.
+
+function readU32(b, o) {
+  return (b[o] * 0x1000000) + (b[o + 1] << 16) + (b[o + 2] << 8) + b[o + 3]
+}
+function boxType(b, o) {
+  return String.fromCharCode(b[o], b[o + 1], b[o + 2], b[o + 3])
+}
+
+// Containers we recurse into to reach nested udta/meta (track-level metadata
+// lives under moov/trak). udta/meta themselves are blanked, not descended into.
+const MP4_CONTAINERS = new Set(['moov', 'trak'])
+
+// Walk sibling boxes in [start,end); blank any udta/meta, recurse into
+// containers. Throws on any structural inconsistency so the caller falls back
+// to sending the original untouched. Returns true if anything was blanked.
+function blankMetaBoxes(buf, start, end) {
+  let changed = false
+  let off = start
+  while (off + 8 <= end) {
+    let size = readU32(buf, off)
+    const type = boxType(buf, off + 4)
+    let headerSize = 8
+    if (size === 1) {
+      if (off + 16 > end) throw new Error('truncated largesize')
+      size = (readU32(buf, off + 8) * 0x100000000) + readU32(buf, off + 12)
+      headerSize = 16
+    } else if (size === 0) {
+      size = end - off
+    }
+    if (size < headerSize || off + size > end) throw new Error('bad box size')
+    if (type === 'udta' || type === 'meta') {
+      buf[off + 4] = 0x66; buf[off + 5] = 0x72; buf[off + 6] = 0x65; buf[off + 7] = 0x65 // "free"
+      buf.fill(0, off + headerSize, off + size)
+      changed = true
+    } else if (MP4_CONTAINERS.has(type)) {
+      if (blankMetaBoxes(buf, off + headerSize, off + size)) changed = true
+    }
+    off += size
+  }
+  if (off !== end) throw new Error('trailing bytes')
+  return changed
+}
+
+// Returns a cleaned Blob (or the original Blob if already clean), or null if the
+// file isn't parseable ISO BMFF and therefore can't be stripped here.
+async function stripMediaMetadata(blob) {
+  let buf
+  try {
+    buf = new Uint8Array(await blob.arrayBuffer())
+  } catch {
+    return null
+  }
+  // A leading `ftyp` box marks an ISO BMFF file (MP4/MOV/M4A).
+  if (buf.length < 8 || boxType(buf, 4) !== 'ftyp') return null
+  let changed
+  try {
+    changed = blankMetaBoxes(buf, 0, buf.length)
+  } catch {
+    return null
+  }
+  if (!changed) return blob
+  return new Blob([buf], { type: blob.type })
+}
+
+// Sends a single file: strips EXIF + generates a thumbnail for images, strips
+// container metadata from MP4/MOV/M4A media, shows an immediate preview in our
+// own chat (instant feedback before the transfer even starts), then sends with
+// per-file progress tracking.
 async function sendOneFile(file, targets) {
   let blob = file
   let thumbnail = null
@@ -1301,6 +1375,14 @@ async function sendOneFile(file, targets) {
     blob = result.blob
     thumbnail = result.thumbnail
     type = blob.type || type
+  } else if (file.type.startsWith('video/') || file.type.startsWith('audio/')) {
+    const cleaned = await stripMediaMetadata(file)
+    if (cleaned) {
+      blob = cleaned
+    } else if (!unstrippedMediaWarned) {
+      unstrippedMediaWarned = true
+      sysMsg('Note: Narciso strips location/device metadata from images and MP4/MOV/M4A media, but not from other formats like MP3, WebM, or MKV. Strip sensitive media yourself before sending. (Shown once.)')
+    }
   }
 
   const transferId = genTransferId()
