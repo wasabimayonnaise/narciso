@@ -1,0 +1,53 @@
+{
+  "name": "narciso",
+  "version": "0.1.0",
+  "description": "Decentralized P2P chat — no servers, no masters",
+  "main": "src/main.js",
+  "scripts": {
+    "bundle": "esbuild src/renderer.js --bundle --outfile=src/bundle.js --format=iife --platform=browser",
+    "start": "npm run bundle && electron .",
+    "build": "electron-builder",
+    "dist": "npm run bundle && electron-builder",
+    "dist:linux": "npm run bundle && electron-builder --linux",
+    "dist:win": "npm run bundle && electron-builder --win",
+    "dist:mac": "npm run bundle && electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.0",
+    "playwright-core": "^1.60.0"
+  },
+  "dependencies": {
+    "@trystero-p2p/torrent": "^0.25.1"
+  },
+  "allowScripts": {
+    "@firebase/util@1.12.1": true,
+    "electron@28.3.3": true,
+    "node-datachannel@0.32.3": true,
+    "protobufjs@7.6.2": true,
+    "esbuild@0.28.0": true
+  },
+  "build": {
+    "appId": "com.narciso.app",
+    "productName": "Narciso",
+    "files": [
+      "src/**/*",
+      "!src/renderer.js"
+    ],
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Network;Chat",
+      "icon": "build/icon.png",
+      "desktopName": "narciso.desktop"
+    },
+    "win": {
+      "target": ["portable"],
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": ["dmg"],
+      "icon": "build/icon.png"
+    }
+  }
+}

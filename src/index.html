@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; script-src 'self' 'unsafe-inline'; connect-src *; style-src 'self' 'unsafe-inline'; media-src *;" />
+  <title>Narciso</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0a0a0f;
+      --surface:  #12121a;
+      --border:   #2a2a3d;
+      --accent:   #7c3aed;
+      --accent2:  #a855f7;
+      --danger:   #ef4444;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --green:    #22c55e;
+      --yellow:   #eab308;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', monospace;
+      font-size: 13px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── header ── */
+    #header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    #logo {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 18px;
+      font-weight: bold;
+      color: var(--accent2);
+      letter-spacing: 1px;
+    }
+
+    #logo img {
+      width: 24px;
+      height: 24px;
+    }
+
+    #logo span { color: var(--danger); }
+
+    #status-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      background: var(--bg);
+    }
+
+    #status-pill.connected {
+      border-color: var(--green);
+      color: var(--green);
+    }
+
+    #status-pill.searching {
+      border-color: var(--yellow);
+      color: var(--yellow);
+      animation: blink 1.4s ease-in-out infinite;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    #peer-count {
+      margin-left: auto;
+      font-size: 11px;
+      color: var(--muted);
+    }
+
+    #peer-count span { color: var(--accent2); font-weight: bold; }
+
+    /* VPN kill-switch indicator dot */
+    #vpn-indicator {
+      font-size: 10px;
+      flex-shrink: 0;
+      display: none;
+      cursor: default;
+    }
+
+    /* BitTorrent tracker connection health indicator */
+    #tracker-indicator {
+      font-size: 10px;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.06em;
+      flex-shrink: 0;
+      display: none;
+      cursor: default;
+    }
+    #tracker-indicator.tracker-ok   { color: var(--muted); }
+    #tracker-indicator.tracker-warn { color: var(--yellow); }
+    #tracker-indicator.tracker-down { color: var(--danger); font-weight: bold; }
+
+    /* Gear / settings button in header */
+    #btn-settings {
+      background: transparent;
+      border: 1px solid #2a2a3d;
+      color: var(--muted);
+      padding: 4px 10px;
+      font-size: 26px;
+      border-radius: 2px;
+      line-height: 1;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    #btn-settings:hover { border-color: var(--accent); color: var(--accent2); background: transparent; }
+
+    /* ── settings panel (fixed right-side drawer) ── */
+    #settings-panel {
+      position: fixed;
+      top: 0;
+      right: -290px;
+      bottom: 0;
+      width: 290px;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      z-index: 200;
+      transition: right 0.18s ease;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+    }
+    #settings-panel.open { right: 0; }
+
+    #settings-hdr {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      color: var(--accent2);
+      letter-spacing: 0.08em;
+      font-size: 11px;
+      flex-shrink: 0;
+    }
+
+    #btn-settings-close {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 14px;
+      padding: 0 2px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    #btn-settings-close:hover { color: var(--danger); background: transparent; }
+
+    #settings-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .s-section { display: flex; flex-direction: column; gap: 7px; }
+
+    .s-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .s-label {
+      font-size: 10px;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    .s-hint {
+      font-size: 10px;
+      color: #3d3d5c;
+      line-height: 1.5;
+    }
+
+    .s-sep { height: 1px; background: var(--border); }
+
+    #settings-panel select {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      padding: 5px 8px;
+      width: 100%;
+      outline: none;
+      border-radius: 2px;
+      cursor: pointer;
+    }
+    #settings-panel select:focus { border-color: var(--accent); }
+
+    #iface-info {
+      font-size: 10px;
+      color: var(--muted);
+      min-height: 14px;
+    }
+    #iface-info.up   { color: var(--green); }
+    #iface-info.down { color: var(--danger); }
+
+    /* ── peer pills strip (group rooms only) ── */
+    #peer-pills {
+      display: none;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 6px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .peer-pill {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 9px;
+      border: 1px solid var(--border);
+      border-radius: 9999px;
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+      color: var(--accent2);
+      background: var(--bg);
+    }
+
+    .peer-pill-name {
+      white-space: nowrap;
+    }
+
+    .peer-pill-abscond {
+      display: none;
+      background: transparent;
+      border: 1px solid rgba(124,58,237,0.4);
+      color: rgba(168,85,247,0.7);
+      font-family: 'Courier New', monospace;
+      font-size: 9px;
+      padding: 1px 6px;
+      border-radius: 2px;
+      cursor: pointer;
+      line-height: 1.4;
+      letter-spacing: 0.06em;
+    }
+
+    .peer-pill:hover .peer-pill-abscond { display: inline-block; }
+
+    .peer-pill-abscond:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+      background: rgba(124,58,237,0.15);
+    }
+
+    /* ── room bar ── */
+    #room-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    #room-input-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    #room-input {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 5px 10px;
+      font-family: inherit;
+      font-size: 12px;
+      border-radius: 4px;
+      outline: none;
+    }
+
+    #room-input:focus { border-color: var(--accent); }
+
+    #room-pass {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      letter-spacing: 0.05em;
+      border-radius: 4px;
+      outline: none;
+    }
+
+    #room-pass:focus { border-color: var(--accent); color: var(--text); }
+
+    #room-lock {
+      font-size: 13px;
+      flex-shrink: 0;
+      color: var(--yellow);
+      cursor: default;
+    }
+
+    /* ── base button ── */
+    button {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 5px 14px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background 0.15s, color 0.15s, border-color 0.15s, text-shadow 0.15s;
+    }
+
+    button:hover  { background: var(--accent2); }
+    button:active { background: #6d28d9; }
+    button:disabled { background: var(--border); color: var(--muted); cursor: not-allowed; }
+
+    #btn-random { background: #1e3a5f; }
+    #btn-random:hover { background: #1d4ed8; }
+
+    #btn-leave {
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+    }
+    #btn-leave:hover { background: var(--danger); color: #fff; }
+
+    #btn-next {
+      background: #451a03;
+      border: 1px solid var(--yellow);
+      color: var(--yellow);
+    }
+    #btn-next:hover { background: #78350f; color: #fff; }
+
+    #btn-stop {
+      background: transparent;
+      border: 1px solid var(--danger);
+      color: var(--danger);
+    }
+    #btn-stop:hover { background: var(--danger); color: #fff; }
+
+    #btn-copy {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    #btn-copy:hover  { border-color: var(--green); color: var(--green); background: transparent; }
+    #btn-copy.copied { border-color: var(--green); color: var(--green); }
+
+    #btn-return {
+      background: transparent;
+      border: 1px solid var(--accent);
+      color: var(--accent2);
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
+    #btn-return:hover { background: rgba(124,58,237,0.15); border-color: var(--accent2); }
+
+    /* ── video area ── */
+    #video-area {
+      display: none;
+      flex-shrink: 0;
+      position: relative;
+      border-bottom: 1px solid var(--border);
+      background: #000;
+      overflow: hidden;
+      /* height and overflow-y are set by JS */
+    }
+
+    #video-area::-webkit-scrollbar { width: 4px; }
+    #video-area::-webkit-scrollbar-track { background: transparent; }
+    #video-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* grid flows naturally — height driven by tile aspect-ratio */
+    #video-grid {
+      width: 100%;
+      display: grid;
+      grid-template-columns: repeat(1, 1fr);
+    }
+
+    .peer-video-box {
+      aspect-ratio: 16/9;
+      position: relative;
+      background: #0d0d14;
+      overflow: hidden;
+      border-right: 1px solid #1a1a2e;
+      min-width: 0;
+    }
+
+    /* video fills the 16:9 tile, cropped to fit */
+    .peer-video-box video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    .peer-video-box video.has-stream {
+      display: block;
+    }
+
+    .peer-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: #2d2d4d;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .peer-placeholder.hidden { display: none; }
+
+    .peer-label {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding: 3px 8px;
+      background: rgba(0, 0, 0, 0.72);
+      font-size: 10px;
+      color: #64748b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      letter-spacing: 0.04em;
+    }
+
+    /* "this peer has their camera on" badge, top-left of the tile */
+    .peer-cam-badge {
+      position: absolute;
+      top: 5px;
+      left: 5px;
+      font-size: 8px;
+      padding: 2px 5px;
+      background: rgba(0,0,0,0.72);
+      border: 1px solid var(--green);
+      color: var(--green);
+      border-radius: 2px;
+      letter-spacing: 0.06em;
+      z-index: 4;
+      display: none;
+    }
+    .peer-cam-badge.show { display: inline-block; }
+
+    /* "this peer has FILE receiving enabled" badge, below the CAM badge */
+    .peer-file-badge {
+      position: absolute;
+      top: 22px;
+      left: 5px;
+      font-size: 8px;
+      padding: 2px 5px;
+      background: rgba(0,0,0,0.72);
+      border: 1px solid var(--accent2);
+      color: var(--accent2);
+      border-radius: 2px;
+      letter-spacing: 0.06em;
+      z-index: 4;
+      display: none;
+    }
+    .peer-file-badge.show { display: inline-block; }
+
+    /* per-peer ping latency, bottom-right of the tile */
+    .peer-latency {
+      position: absolute;
+      bottom: 3px;
+      right: 6px;
+      font-family: 'Courier New', monospace;
+      font-size: 9px;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      z-index: 2;
+      pointer-events: none;
+    }
+    .peer-latency.lat-good { color: var(--green); }
+    .peer-latency.lat-warn { color: var(--yellow); }
+    .peer-latency.lat-bad  { color: var(--danger); }
+
+    /* speaking highlight — purple glow border */
+    .peer-video-box.speaking {
+      outline: 2px solid var(--accent2);
+      outline-offset: -2px;
+      box-shadow: inset 0 0 16px rgba(168, 85, 247, 0.2);
+    }
+
+    /* per-peer tile controls (EAR / EYE) */
+    .peer-controls {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      display: flex;
+      gap: 3px;
+      opacity: 0;
+      transition: opacity 0.12s;
+      z-index: 5;
+    }
+    .peer-video-box:hover .peer-controls { opacity: 1; }
+
+    .peer-ctrl-btn {
+      background: rgba(0,0,0,0.72);
+      border: 1px solid rgba(100,116,139,0.35);
+      color: rgba(100,116,139,0.8);
+      font-family: 'Courier New', monospace;
+      font-size: 8px;
+      padding: 2px 5px;
+      border-radius: 2px;
+      cursor: pointer;
+      line-height: 1.2;
+      letter-spacing: 0.06em;
+    }
+    .peer-ctrl-btn:hover {
+      background: rgba(0,0,0,0.92);
+      border-color: var(--muted);
+      color: var(--text);
+    }
+    .peer-ctrl-btn.off {
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    /* ABSCOND button — only visible in group rooms */
+    .peer-ctrl-btn.abscond-btn { display: none; }
+    body.group-room .peer-ctrl-btn.abscond-btn { display: inline-block; }
+    .peer-ctrl-btn.abscond-btn {
+      border-color: rgba(124,58,237,0.4);
+      color: rgba(168,85,247,0.7);
+    }
+    .peer-ctrl-btn.abscond-btn:hover {
+      border-color: var(--accent2);
+      color: var(--accent2);
+      background: rgba(124,58,237,0.15);
+    }
+
+    /* ── abscond incoming prompt ── */
+    .msg.abscond-prompt {
+      border: 1px solid rgba(124,58,237,0.5);
+      padding: 8px 12px;
+      border-radius: 2px;
+      background: rgba(124,58,237,0.07);
+      color: var(--text);
+      font-style: normal;
+    }
+    .abscond-prompt-text { font-style: italic; color: var(--muted); }
+    .abscond-btns { display: flex; gap: 6px; margin-top: 7px; }
+    .abscond-btns button {
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      padding: 3px 10px;
+      border-radius: 2px;
+      cursor: pointer;
+      background: transparent;
+      letter-spacing: 0.06em;
+    }
+    .abscond-accept  { border: 1px solid var(--green);  color: var(--green); }
+    .abscond-accept:hover  { background: rgba(34,197,94,0.12); }
+    .abscond-decline { border: 1px solid var(--muted);  color: var(--muted); }
+    .abscond-decline:hover { background: rgba(100,116,139,0.12); }
+
+    /* ── audio-only overflow tiles (peers 13+ when room > 12) ── */
+    #audio-overflow {
+      display: none;
+      flex-wrap: wrap;
+      gap: 4px;
+      padding: 6px;
+      background: #070710;
+      border-top: 1px solid var(--border);
+    }
+
+    .audio-only-tile {
+      aspect-ratio: unset !important;
+      height: 40px;
+      flex: 0 0 calc(25% - 3px);
+      min-width: 130px;
+      display: flex !important;
+      align-items: center;
+      padding: 0 8px;
+      gap: 8px;
+      border-right: none;
+      border: 1px solid var(--border);
+      border-radius: 2px;
+    }
+
+    .audio-only-tile video,
+    .audio-only-tile .peer-placeholder { display: none !important; }
+
+    .audio-only-tile .peer-label {
+      position: static;
+      flex: 1;
+      background: none;
+      font-size: 12px;
+      color: var(--text);
+      padding: 0;
+    }
+
+    .audio-only-tile .peer-controls {
+      position: static;
+      opacity: 1 !important;
+    }
+
+    #self-preview {
+      position: absolute;
+      bottom: 8px;
+      right: 8px;
+      width: 120px;
+      height: 90px;
+      object-fit: cover;
+      border: 1px solid #2a2a3d;
+      background: #111;
+      z-index: 10;
+      display: none;
+    }
+
+    /* ── messages ── */
+    #messages {
+      position: relative;
+      flex: 1;
+      min-height: 120px;
+      overflow-y: auto;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    #file-drop-zone {
+      position: absolute;
+      inset: 6px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      background: rgba(10,10,15,0.85);
+      border: 2px dashed var(--accent2);
+      border-radius: 4px;
+      color: var(--accent2);
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      z-index: 50;
+      pointer-events: none;
+    }
+    #file-drop-zone.show { display: flex; }
+
+    #messages::-webkit-scrollbar { width: 4px; }
+    #messages::-webkit-scrollbar-track { background: transparent; }
+    #messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .msg { line-height: 1.5; word-break: break-word; }
+
+    .msg .ts   { color: var(--muted); font-size: 10px; margin-right: 6px; }
+    .msg .nick { font-weight: bold; margin-right: 6px; }
+    .msg .nick.self { color: var(--accent2); }
+    .msg .nick.peer { color: var(--yellow); }
+    .msg .body { color: var(--text); }
+
+    .msg.system { color: var(--muted); font-style: italic; font-size: 11px; }
+    .msg.system .sym { color: var(--accent); margin-right: 4px; }
+
+    /* ── file sharing ── */
+    .msg.file-progress .file-progress-text {
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.02em;
+    }
+
+    .msg.file-msg { margin: 4px 0; }
+
+    .file-thumb {
+      max-width: 220px;
+      max-height: 160px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      display: block;
+      margin-top: 4px;
+      cursor: zoom-in;
+    }
+
+    .file-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 4px;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: rgba(255,255,255,0.02);
+      font-size: 12px;
+    }
+
+    .file-card .file-save-btn {
+      margin-left: auto;
+      min-width: unset;
+    }
+
+    .file-save-btn {
+      display: block;
+      margin-top: 4px;
+      min-width: unset;
+    }
+
+    .file-text-preview {
+      margin-top: 4px;
+      padding: 6px 8px;
+      max-width: 480px;
+      max-height: 240px;
+      overflow: auto;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: rgba(255,255,255,0.02);
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .file-audio {
+      display: block;
+      margin-top: 4px;
+      max-width: 320px;
+    }
+
+    .file-video {
+      display: block;
+      margin-top: 4px;
+      max-width: 320px;
+      max-height: 220px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+    }
+
+    #image-lightbox {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      cursor: zoom-out;
+    }
+    #image-lightbox.hidden { display: none; }
+    #image-lightbox img {
+      max-width: 90%;
+      max-height: 90%;
+      border-radius: 4px;
+    }
+
+    /* ── input bar ── */
+    #input-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+
+    #my-nick {
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    #my-nick strong { color: var(--accent2); }
+
+    /* media toggle buttons — live in the input bar */
+    button.media-btn {
+      background: #0d0d14;
+      border: 1px solid #1e1e30;
+      color: #2d2d4d;
+      padding: 4px 7px;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      border-radius: 2px;
+      flex-shrink: 0;
+      min-width: 32px;
+      text-align: center;
+    }
+
+    button.media-btn:hover {
+      background: #0d0d14;
+      border-color: #3d3d5c;
+      color: var(--muted);
+    }
+
+    button.media-btn.on {
+      background: #071410;
+      border-color: var(--green);
+      color: var(--green);
+      text-shadow: 0 0 6px rgba(34, 197, 94, 0.6);
+    }
+
+    button.media-btn.on:hover {
+      background: #0a1c14;
+      text-shadow: 0 0 10px rgba(34, 197, 94, 0.8);
+    }
+
+    #peer-media-status {
+      font-size: 10px;
+      color: #2d2d4d;
+      white-space: nowrap;
+      flex-shrink: 0;
+      font-style: italic;
+      letter-spacing: 0.04em;
+    }
+
+    #msg-input {
+      flex: 1;
+      min-width: 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      font-family: inherit;
+      font-size: 13px;
+      border-radius: 4px;
+      outline: none;
+      resize: none;
+      height: 34px;
+    }
+
+    #msg-input:focus   { border-color: var(--accent); }
+    #msg-input:disabled { opacity: 0.3; cursor: not-allowed; }
+
+    /* ── Privacy Disclaimer Overlay ── */
+    #privacy-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      /* subtle CRT scanline texture */
+      background-image: repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 3px,
+        rgba(0, 0, 0, 0.12) 3px,
+        rgba(0, 0, 0, 0.12) 4px
+      );
+    }
+
+    #privacy-box {
+      max-width: 580px;
+      width: 100%;
+      border: 1px solid var(--accent);
+      background: var(--surface);
+      padding: 34px 40px 30px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      box-shadow: 0 0 60px rgba(124, 58, 237, 0.18), 0 0 0 1px rgba(124, 58, 237, 0.08);
+    }
+
+    #privacy-title {
+      font-size: 14px;
+      font-weight: bold;
+      color: var(--yellow);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 14px;
+    }
+
+    #privacy-body {
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      font-size: 12px;
+      line-height: 1.75;
+      color: var(--muted);
+    }
+
+    #privacy-body strong {
+      color: var(--text);
+      font-weight: bold;
+    }
+
+    #privacy-body .ack {
+      color: var(--text);
+      font-style: italic;
+      border-top: 1px solid var(--border);
+      padding-top: 11px;
+      font-size: 11px;
+    }
+
+    #privacy-btns {
+      display: flex;
+      gap: 10px;
+      margin-top: 4px;
+    }
+
+    #btn-disclaimer-continue {
+      flex: 1;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      padding: 9px 20px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    #btn-disclaimer-continue:hover { background: var(--accent2); }
+    #btn-disclaimer-continue:active { background: #6d28d9; }
+
+    #btn-disclaimer-exit {
+      background: transparent;
+      border: 1px solid #3d3d5c;
+      color: #3d3d5c;
+      padding: 9px 18px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      border-radius: 3px;
+      transition: border-color 0.15s, color 0.15s;
+    }
+    #btn-disclaimer-exit:hover { border-color: var(--danger); color: var(--danger); background: transparent; }
+    #btn-disclaimer-exit:active { border-color: #b91c1c; color: #b91c1c; }
+  </style>
+</head>
+<body>
+
+<div id="privacy-overlay">
+  <div id="privacy-box">
+    <div id="privacy-title">⚠ Before You Connect</div>
+    <div id="privacy-body">
+      <p>Narciso is peer-to-peer. There are no servers between you and the people you connect with.</p>
+      <p>This means anyone you chat with can see your <strong>real IP address</strong> unless you are using a VPN. From an IP address, someone could determine your approximate location, your ISP, and potentially more.</p>
+      <p>We strongly recommend using a VPN before connecting. Narciso has a built-in VPN kill switch (<strong>⚙ Settings</strong>) that will protect you if your VPN drops.</p>
+      <p class="ack">By continuing, you acknowledge that you understand the risks of peer-to-peer communication without a VPN.</p>
+    </div>
+    <div id="privacy-btns">
+      <button id="btn-disclaimer-continue">[ I Understand, Continue ]</button>
+      <button id="btn-disclaimer-exit">Exit</button>
+    </div>
+  </div>
+</div>
+<script>
+  document.getElementById('btn-disclaimer-continue').addEventListener('click', function () {
+    document.getElementById('privacy-overlay').remove()
+  })
+  document.getElementById('btn-disclaimer-exit').addEventListener('click', function () {
+    if (window.__electron && window.__electron.quit) window.__electron.quit()
+    else window.close()
+  })
+</script>
+
+<div id="header">
+  <div id="logo"><img src="./logo.svg" alt="" />NARC<span>ISO</span></div>
+  <div id="status-pill">● disconnected</div>
+  <div id="peer-count">peers: <span id="n-peers">0</span></div>
+  <span id="tracker-indicator" class="tracker-ok" title="">TRACKERS: OK</span>
+  <span id="vpn-indicator" title="VPN Protection">●</span>
+  <button id="btn-settings" title="Settings">⚙</button>
+</div>
+
+<div id="room-bar">
+  <div id="room-input-wrap">
+    <input id="room-input" type="text" placeholder="room name…" value="" spellcheck="false" />
+    <input id="room-pass" type="password" placeholder="password (optional)" autocomplete="off" spellcheck="false" style="display:none" />
+  </div>
+  <span id="room-lock" title="Password-protected room" style="display:none">🔒</span>
+  <button id="btn-copy"  style="display:none" title="Copy room name to clipboard">copy</button>
+  <button id="btn-join">Join</button>
+  <button id="btn-random">⚄ Random</button>
+  <button id="btn-leave"   style="display:none">Leave</button>
+  <button id="btn-return" style="display:none">↩ Return</button>
+  <button id="btn-next"  style="display:none">Next ›</button>
+  <button id="btn-stop"  style="display:none">✕ Stop</button>
+</div>
+
+<div id="peer-pills"></div>
+
+<div id="video-area">
+  <div id="video-grid"></div>
+  <div id="audio-overflow"></div>
+  <video id="self-preview" autoplay muted playsinline></video>
+</div>
+
+<div id="messages">
+  <div id="file-drop-zone">⇣ Drop file here to send ⇣</div>
+</div>
+
+<div id="input-bar">
+  <div id="my-nick">you: <strong id="nick-display">—</strong></div>
+  <button id="btn-mic" class="media-btn">MIC</button>
+  <button id="btn-cam" class="media-btn">CAM</button>
+  <button id="btn-ear" class="media-btn">EAR</button>
+  <button id="btn-eye" class="media-btn">EYE</button>
+  <button id="btn-file" class="media-btn">FILE</button>
+  <span id="peer-media-status"></span>
+  <input type="file" id="file-input" multiple style="display:none">
+  <button id="btn-attach" class="media-btn" title="Send a file">📎</button>
+  <textarea id="msg-input" placeholder="type and press Enter…" disabled></textarea>
+  <button id="btn-send" disabled>Send</button>
+</div>
+
+<div id="settings-panel">
+  <div id="settings-hdr">
+    <span>[ SETTINGS ]</span>
+    <button id="btn-settings-close">✕</button>
+  </div>
+  <div id="settings-body">
+
+    <div class="s-section">
+      <div class="s-label">NETWORK INTERFACE</div>
+      <select id="iface-select">
+        <option value="auto">auto — OS default route</option>
+      </select>
+      <div id="iface-info">auto — OS handles routing</div>
+      <div class="s-hint">If your VPN is the default route, WebRTC uses it automatically. Select your VPN adapter below to enable the kill switch.</div>
+    </div>
+
+    <div class="s-sep"></div>
+
+    <div class="s-section">
+      <div class="s-row">
+        <div class="s-label">VPN KILL SWITCH</div>
+        <button id="btn-vpn" class="media-btn">OFF</button>
+      </div>
+      <div class="s-hint">When on: immediately kills all connections if the selected interface goes down. Refuses new connections until it comes back up.</div>
+    </div>
+
+    <div class="s-sep"></div>
+
+    <div class="s-section">
+      <div class="s-label">MICROPHONE</div>
+      <select id="mic-select">
+        <option value="default">Default</option>
+      </select>
+    </div>
+
+    <div class="s-section">
+      <div class="s-label">CAMERA</div>
+      <select id="cam-select">
+        <option value="default">Default</option>
+      </select>
+    </div>
+
+  </div>
+</div>
+
+<script src="./bundle.js"></script>
+</body>
+</html>
