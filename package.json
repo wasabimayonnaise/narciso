@@ -2,6 +2,8 @@
   "name": "narciso",
   "version": "0.1.0",
   "description": "Decentralized P2P chat — no servers, no masters",
+  "author": "wasabimayonnaise",
+  "desktopName": "narciso.desktop",
   "main": "src/main.js",
   "scripts": {
     "bundle": "esbuild src/renderer.js --bundle --outfile=src/bundle.js --format=iife --platform=browser",
@@ -39,7 +41,8 @@
       "target": ["AppImage"],
       "category": "Network;Chat",
       "icon": "build/icon.png",
-      "desktopName": "narciso.desktop"
+      "executableName": "narciso",
+      "syncDesktopName": true
     },
     "win": {
       "target": ["portable"],
