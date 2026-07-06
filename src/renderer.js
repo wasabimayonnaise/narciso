@@ -1181,9 +1181,12 @@ function processImage(file) {
         resolve({ blob: blob || file, thumbnail })
       }, outType, 0.92)
     }
+    // Decode failed — corrupt, or a format Chromium can't render (HEIC is the
+    // common one). We can't strip EXIF/GPS from bytes we can't decode, so signal
+    // failure and let the caller refuse rather than silently ship the original.
     img.onerror = () => {
       URL.revokeObjectURL(url)
-      resolve({ blob: file, thumbnail: null })
+      resolve(null)
     }
     img.src = url
   })
@@ -1252,20 +1255,57 @@ async function renderReceivedFile(peerId, data, metadata) {
   $msgs.scrollTop = $msgs.scrollHeight
 }
 
+// A file's name is metadata: screenshots and camera files encode the date, time,
+// and OS locale (e.g. "Screenshot_20260706_132030.png", "IMG_20260706_.."), and
+// downloads/documents carry original or personal names. We never put the real
+// name on the wire — only a neutral "<category>-<token>.<ext>". The extension is
+// kept so the receiver renders and saves correctly; the sender still sees the
+// true name in their own chat.
+function neutralFileName(type, originalName) {
+  const category =
+    type.startsWith('image/') ? 'image' :
+    type.startsWith('video/') ? 'video' :
+    type.startsWith('audio/') ? 'audio' :
+    type.startsWith('text/')  ? 'text'  :
+    'file'
+  const ext = fileExtension(type, originalName)
+  return ext ? `${category}-${randomHex(4)}.${ext}` : `${category}-${randomHex(4)}`
+}
+
+// Best-effort extension for the neutral name. Prefers the MIME subtype (which,
+// for images, reflects the actual re-encoded bytes), falling back to the real
+// name's extension only when the type is unknown/generic.
+function fileExtension(type, originalName) {
+  const sub = (type.split('/')[1] || '').split(';')[0].toLowerCase()
+  const map = { jpeg: 'jpg', 'svg+xml': 'svg', plain: 'txt', markdown: 'md', 'x-markdown': 'md' }
+  if (map[sub]) return map[sub]
+  if (sub && sub !== 'octet-stream' && /^[a-z0-9]{1,8}$/.test(sub)) return sub
+  const fromName = /\.([A-Za-z0-9]{1,8})$/.exec(originalName || '')
+  return fromName ? fromName[1].toLowerCase() : ''
+}
+
 // Sends a single file: strips EXIF + generates a thumbnail for images,
 // shows an immediate preview in our own chat (instant feedback before the
 // transfer even starts), then sends with per-file progress tracking.
 async function sendOneFile(file, targets) {
   let blob = file
   let thumbnail = null
+  let type = file.type || 'application/octet-stream'
   if (file.type.startsWith('image/')) {
     const result = await processImage(file)
+    if (!result) {
+      // Couldn't decode → couldn't strip EXIF/GPS. Refuse rather than leak.
+      sysMsg(`Couldn't strip metadata from ${file.name}, so it wasn't sent. Convert it to PNG or JPEG and try again.`)
+      return
+    }
     blob = result.blob
     thumbnail = result.thumbnail
+    type = blob.type || type
   }
 
   const transferId = genTransferId()
-  const metadata = { name: file.name, type: file.type || 'application/octet-stream', size: blob.size, transferId }
+  // Real name stays local; only the neutral name goes on the wire.
+  const metadata = { name: neutralFileName(type, file.name), type, size: blob.size, transferId }
   if (thumbnail) metadata.thumbnail = thumbnail
 
   const el = createFileMsg(`<span class="nick self">${escHtml(MY_NICK)}</span><span class="body">sending ${escHtml(file.name)} (${formatBytes(blob.size)})…</span>`)
